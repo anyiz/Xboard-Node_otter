@@ -436,6 +436,7 @@ func (c *Client) doRequest(method, path string, body []byte, ifNoneMatch string)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-Device-Leases", "v1")
+	req.Header.Set("X-Device-Policy", "v1")
 	if ifNoneMatch != "" {
 		req.Header.Set("If-None-Match", ifNoneMatch)
 	}

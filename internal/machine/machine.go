@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,9 +22,10 @@ import (
 
 // nodeHandle tracks a running node service.
 type nodeHandle struct {
-	cancel  context.CancelFunc
-	done    chan struct{}
-	mailbox *controlplane.NodeMailbox
+	policyKey string
+	cancel    context.CancelFunc
+	done      chan struct{}
+	mailbox   *controlplane.NodeMailbox
 }
 
 // Orchestrator manages all nodes bound to a panel machine. It:
@@ -34,8 +37,9 @@ type Orchestrator struct {
 	cfg    *config.Config
 	client *panel.Client // machine-level client (no node_id)
 
-	mu    sync.Mutex
-	nodes map[int]*nodeHandle // node_id → handle
+	discoveryMu sync.Mutex
+	mu          sync.Mutex
+	nodes       map[int]*nodeHandle // node_id → handle
 
 	// Per-node mailbox keyed by node_id. Shared WS events are aggregated here
 	// and each node service drains the latest state when ready.
@@ -124,7 +128,7 @@ func (o *Orchestrator) startNode(ctx context.Context, mn panel.MachineNode) {
 	nodeCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	mb := controlplane.NewNodeMailbox()
-	o.nodes[mn.ID] = &nodeHandle{cancel: cancel, done: done, mailbox: mb}
+	o.nodes[mn.ID] = &nodeHandle{cancel: cancel, done: done, mailbox: mb, policyKey: policyKey(mn)}
 	o.mu.Unlock()
 
 	o.eventsMu.Lock()
@@ -132,6 +136,12 @@ func (o *Orchestrator) startNode(ctx context.Context, mn panel.MachineNode) {
 	o.eventsMu.Unlock()
 
 	nodeCfg := o.cfg.ExpandMachineNode(mn.ID, mn.Type)
+	if err := applyDevicePolicy(&nodeCfg.Kernel, mn.DevicePolicy); err != nil {
+		nlog.Core().Error("invalid device policy; node stays stopped", "node_id", mn.ID, "error", err)
+		cancel()
+		close(done)
+		return
+	}
 
 	perNodeClient := o.client.ForNode(mn.ID)
 
@@ -223,6 +233,8 @@ func (o *Orchestrator) stopAll() {
 // ─── Node discovery ──────────────────────────────────────────────────────
 
 func (o *Orchestrator) rediscover(ctx context.Context) {
+	o.discoveryMu.Lock()
+	defer o.discoveryMu.Unlock()
 	nodesResp, err := o.client.GetMachineNodes()
 	if err != nil {
 		nlog.Core().Warn("machine node discovery failed", "error", err)
@@ -236,8 +248,9 @@ func (o *Orchestrator) rediscover(ctx context.Context) {
 
 	o.mu.Lock()
 	var toRemove []int
-	for id := range o.nodes {
-		if _, ok := wanted[id]; !ok {
+	for id, handle := range o.nodes {
+		n, ok := wanted[id]
+		if !ok || handle.policyKey != policyKey(n) || nodeExited(handle.done) {
 			toRemove = append(toRemove, id)
 		}
 	}
@@ -410,4 +423,40 @@ func (p *machineNodePush) SendDeviceReport(devices map[int][]string) {
 	payload["devices"] = strDevices
 	data, _ := json.Marshal(payload)
 	p.ws.SendRaw(panel.WSEventReportDevices, data)
+}
+
+// Missing policy preserves local settings. Policy changes close the old
+// service before a replacement starts, draining all old authorizations.
+func policyKey(node panel.MachineNode) string {
+	b, _ := json.Marshal(node.DevicePolicy)
+	return string(b)
+}
+func nodeExited(done <-chan struct{}) bool {
+	select {
+	case <-done:
+		return true
+	default:
+		return false
+	}
+}
+func applyDevicePolicy(cfg *config.KernelConfig, policy *panel.DevicePolicy) error {
+	if policy == nil {
+		return nil
+	}
+	if strings.TrimSpace(policy.Revision) == "" {
+		return fmt.Errorf("missing policy revision")
+	}
+	if policy.Enabled && len(policy.TrustedProxies) == 0 {
+		return fmt.Errorf("trusted proxies required")
+	}
+	for _, source := range policy.TrustedProxies {
+		prefix, err := netip.ParsePrefix(source)
+		if err != nil || prefix.Bits() == 0 {
+			return fmt.Errorf("invalid or unrestricted trusted proxy: %s", source)
+		}
+	}
+	cfg.StrictDeviceLeases = policy.Enabled
+	cfg.TrustedProxies = append([]string(nil), policy.TrustedProxies...)
+	cfg.DevicePolicyRevision = policy.Revision
+	return nil
 }

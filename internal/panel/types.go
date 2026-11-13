@@ -63,10 +63,17 @@ type Settings struct {
 }
 
 // MachineNode is a single entry returned by GET /api/v2/server/machine/nodes.
+type DevicePolicy struct {
+	Enabled        bool     `json:"enabled"`
+	TrustedProxies []string `json:"trusted_proxies"`
+	Revision       string   `json:"revision"`
+}
+
 type MachineNode struct {
-	ID   int    `json:"id"`
-	Type string `json:"type"`
-	Name string `json:"name"`
+	DevicePolicy *DevicePolicy `json:"device_policy,omitempty"`
+	ID           int           `json:"id"`
+	Type         string        `json:"type"`
+	Name         string        `json:"name"`
 }
 
 // MachineNodesResponse is the response from GET /api/v2/server/machine/nodes.

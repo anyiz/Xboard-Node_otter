@@ -314,7 +314,7 @@ func (s *Service) initialSetup(ctx context.Context) error {
 		"users", len(bootstrap.Users),
 	)
 
-	if len(bootstrap.Users) == 0 {
+	if len(bootstrap.Users) == 0 && s.cfg.Kernel.DevicePolicyRevision == "" {
 		nlog.Core().Warn("no users, kernel will not start until users are available")
 		s.markMailboxReadyAndDrain(ctx)
 		return nil
@@ -1034,6 +1034,7 @@ func (s *Service) buildMetrics(status monitor.Status) map[string]interface{} {
 	s.metricsMu.RUnlock()
 
 	m := make(map[string]interface{})
+	m["device_policy_revision"] = s.cfg.Kernel.DevicePolicyRevision
 	online := s.tracker.CurrentOnline()
 
 	m["uptime"] = status.Uptime

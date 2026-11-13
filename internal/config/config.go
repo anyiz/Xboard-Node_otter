@@ -119,12 +119,13 @@ type WSConfig struct {
 }
 
 type KernelConfig struct {
-	StrictDeviceLeases bool                 `yaml:"strict_device_leases"`
-	TrustedProxies     []string             `yaml:"trusted_proxies"`
-	LeaseManager       *devicelease.Manager `yaml:"-"`
-	Type               string               `yaml:"type"` // "singbox" or "xray"
-	ConfigDir          string               `yaml:"config_dir"`
-	LogLevel           string               `yaml:"log_level"`
+	DevicePolicyRevision string               `yaml:"-"`
+	StrictDeviceLeases   bool                 `yaml:"strict_device_leases"`
+	TrustedProxies       []string             `yaml:"trusted_proxies"`
+	LeaseManager         *devicelease.Manager `yaml:"-"`
+	Type                 string               `yaml:"type"` // "singbox" or "xray"
+	ConfigDir            string               `yaml:"config_dir"`
+	LogLevel             string               `yaml:"log_level"`
 
 	// GeoDataDir is the directory that contains GeoIP/GeoSite database files.
 	// For sing-box: geoip.db and geosite.db (geoip2-format).
