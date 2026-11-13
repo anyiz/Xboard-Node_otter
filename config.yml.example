@@ -24,3 +24,10 @@
 #       token: "machine-token-2"
 #     log:
 #       level: "debug"   # override for this instance only
+
+# Strict global public-IP leases (requires upgraded Xboard + Flux):
+# kernel:
+#   type: "singbox"  # or xray; raw TCP transport only
+#   strict_device_leases: true
+#   trusted_proxies: ["203.0.113.10/32"] # actual final-hop relay IPs; never 0.0.0.0/0
+# Keep native UDP, multiplex and additional custom inbounds disabled.

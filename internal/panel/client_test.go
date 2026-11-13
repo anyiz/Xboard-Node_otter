@@ -335,3 +335,27 @@ func TestStringOrArrayDecodeHook_String(t *testing.T) {
 		t.Errorf("got %q, want %q", cfg.PaddingScheme, want)
 	}
 }
+
+func TestReport_EmptyAliveSnapshotIsNotOmitted(t *testing.T) {
+	ts, client := newTestServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/server/report" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		var payload map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if string(payload["alive"]) != "{}" {
+			t.Errorf("empty alive snapshot omitted or not an object: %s", payload["alive"])
+		}
+		if string(payload["online"]) != "{}" {
+			t.Errorf("empty online snapshot omitted or not an object: %s", payload["online"])
+		}
+		w.Write([]byte(`{"data":true}`))
+	})
+	defer ts.Close()
+	if err := client.Report(nil, map[int][]string{}, map[int]int{}, 0,
+		[2]uint64{}, [2]uint64{}, [2]uint64{}, nil); err != nil {
+		t.Fatal(err)
+	}
+}

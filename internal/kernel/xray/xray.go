@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/xtls/xray-core/transport/internet"
 	"os"
 	"strings"
 	"sync"
@@ -15,9 +16,9 @@ import (
 	"github.com/xtls/xray-core/common/protocol"
 	"github.com/xtls/xray-core/common/uuid"
 	xrayCore "github.com/xtls/xray-core/core"
+	featurebandwidth "github.com/xtls/xray-core/features/bandwidth"
 	"github.com/xtls/xray-core/features/inbound"
 	"github.com/xtls/xray-core/features/stats"
-	featurebandwidth "github.com/xtls/xray-core/features/bandwidth"
 	"github.com/xtls/xray-core/infra/conf/serial"
 	xrayProxy "github.com/xtls/xray-core/proxy"
 	"github.com/xtls/xray-core/proxy/shadowsocks"
@@ -32,8 +33,8 @@ import (
 	"github.com/cedar2025/xboard-node/internal/config"
 	"github.com/cedar2025/xboard-node/internal/kernel"
 	"github.com/cedar2025/xboard-node/internal/kernel/geodata"
-	"github.com/cedar2025/xboard-node/internal/nlog"
 	"github.com/cedar2025/xboard-node/internal/model"
+	"github.com/cedar2025/xboard-node/internal/nlog"
 )
 
 const (
@@ -115,6 +116,14 @@ func (x *Xray) Protocols() []string {
 //	Phase 4 – Swap:       store new, extract old     (brief kernel lock)
 //	Phase 5 – RecycleOld: close old in background    (non-blocking)
 func (x *Xray) Start(nodeConfig *model.NodeSpec, users []model.UserSpec, tls kernel.TLSCert) error {
+	if err := kernel.ValidateStrict(x.cfg, nodeConfig); err != nil {
+		return err
+	}
+	if x.cfg.StrictDeviceLeases {
+		if err := internet.SetStrictProxy(nodeConfig.ServerPort, x.cfg.TrustedProxies); err != nil {
+			return err
+		}
+	}
 	// ── Phase 1: Build config (no shared state) ─────────────────────────
 	x.ensureGeoData(nodeConfig)
 
@@ -137,6 +146,19 @@ func (x *Xray) Start(nodeConfig *model.NodeSpec, users []model.UserSpec, tls ker
 		return fmt.Errorf("create xray: %w", err)
 	}
 
+	if ld != nil && x.cfg.StrictDeviceLeases {
+		ld.leases = x.cfg.LeaseManager
+		ids := make(map[string]int)
+		credentials := make(map[string]string)
+		for _, u := range users {
+			ids[userEmail(u.ID)] = u.ID
+			ids[u.UUID] = u.ID
+			credentials[userEmail(u.ID)] = u.UUID
+			credentials[u.UUID] = u.UUID
+		}
+		ld.credentials = credentials
+		ld.UpdateLimits(ids, map[string]int{}, nil)
+	}
 	// ── Phase 3: Start new (no lock, potentially slow) ──────────────────
 	if err := startWithTimeout(inst, startTimeout); err != nil {
 		inst.Close()
@@ -177,6 +199,9 @@ func (x *Xray) Start(nodeConfig *model.NodeSpec, users []model.UserSpec, tls ker
 // instance restart for most transport/TLS settings, it triggers a full restart
 // if any kernel-affecting fields (hash mismatch) have changed.
 func (x *Xray) Reload(nodeConfig *model.NodeSpec, users []model.UserSpec, tls kernel.TLSCert) error {
+	if err := kernel.ValidateStrict(x.cfg, nodeConfig); err != nil {
+		return err
+	}
 	x.updateDispatcherLimits(users)
 	x.updateBandwidthLimits(users)
 
@@ -314,7 +339,7 @@ func (x *Xray) AddUsers(users []model.UserSpec) (int, error) {
 		x.users = merged
 		x.mu.Unlock()
 		x.updateDispatcherLimits(merged)
-	x.updateBandwidthLimits(merged)
+		x.updateBandwidthLimits(merged)
 		return 0, nil
 	}
 
@@ -800,6 +825,16 @@ func (x *Xray) updateDispatcherLimits(users []model.UserSpec) {
 		}
 	}
 
+	if x.cfg.StrictDeviceLeases {
+		deviceLimits = map[string]int{}
+		ld.mu.Lock()
+		ld.credentials = make(map[string]string)
+		for _, u := range users {
+			ld.credentials[userEmail(u.ID)] = u.UUID
+			ld.credentials[u.UUID] = u.UUID
+		}
+		ld.mu.Unlock()
+	}
 	ld.UpdateLimits(emailToUID, deviceLimits, nil)
 }
 

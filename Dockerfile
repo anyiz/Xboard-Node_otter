@@ -6,6 +6,7 @@ RUN apk add --no-cache git
 WORKDIR /build
 
 COPY go.mod go.sum ./
+COPY third_party ./third_party
 RUN go mod download
 
 COPY . .
@@ -33,7 +34,7 @@ WORKDIR /etc/xboard-node
 #     -e apiHost=https://panel.example.com \
 #     -e apiKey=YOUR_TOKEN \
 #     -e nodeID=1 \
-#     ghcr.io/cedar2025/xboard-node:latest
+#     ghcr.io/anyiz/xboard-node_otter:latest
 #
 # Supported env vars:
 #   apiHost  / API_HOST    → panel URL

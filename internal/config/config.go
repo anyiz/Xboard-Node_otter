@@ -13,20 +13,21 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cedar2025/xboard-node/internal/devicelease"
 	"github.com/cedar2025/xboard-node/internal/nlog"
 	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	InstanceID string `yaml:"-"`
-	Panel   PanelConfig   `yaml:"panel"`
-	Node    NodeConfig    `yaml:"node"`
-	Kernel  KernelConfig  `yaml:"kernel"`
-	Cert    CertConfig    `yaml:"cert"`
-	Log     LogConfig     `yaml:"log"`
-	Runtime RuntimeConfig `yaml:"runtime"`
-	WS      WSConfig      `yaml:"ws"`
+	InstanceID string        `yaml:"-"`
+	Panel      PanelConfig   `yaml:"panel"`
+	Node       NodeConfig    `yaml:"node"`
+	Kernel     KernelConfig  `yaml:"kernel"`
+	Cert       CertConfig    `yaml:"cert"`
+	Log        LogConfig     `yaml:"log"`
+	Runtime    RuntimeConfig `yaml:"runtime"`
+	WS         WSConfig      `yaml:"ws"`
 	// Standalone enables a local-only node that never contacts the panel.
 	Standalone *StandaloneConfig `yaml:"standalone,omitempty"`
 	// HealthPort enables a lightweight HTTP health-check endpoint on the
@@ -118,9 +119,12 @@ type WSConfig struct {
 }
 
 type KernelConfig struct {
-	Type      string `yaml:"type"` // "singbox" or "xray"
-	ConfigDir string `yaml:"config_dir"`
-	LogLevel  string `yaml:"log_level"`
+	StrictDeviceLeases bool                 `yaml:"strict_device_leases"`
+	TrustedProxies     []string             `yaml:"trusted_proxies"`
+	LeaseManager       *devicelease.Manager `yaml:"-"`
+	Type               string               `yaml:"type"` // "singbox" or "xray"
+	ConfigDir          string               `yaml:"config_dir"`
+	LogLevel           string               `yaml:"log_level"`
 
 	// GeoDataDir is the directory that contains GeoIP/GeoSite database files.
 	// For sing-box: geoip.db and geosite.db (geoip2-format).

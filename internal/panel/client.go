@@ -126,7 +126,7 @@ func (c *Client) Report(traffic map[int][2]int64, alive map[int][]string, online
 		}()
 	}
 
-	if len(alive) > 0 {
+	if alive != nil {
 		a := aliveMapPool.Get().(map[string][]string)
 		for uid, ips := range alive {
 			a[strconv.Itoa(uid)] = ips
@@ -140,7 +140,7 @@ func (c *Client) Report(traffic map[int][2]int64, alive map[int][]string, online
 		}()
 	}
 
-	if len(online) > 0 {
+	if online != nil {
 		o := onlineMapPool.Get().(map[string]int)
 		for uid, count := range online {
 			o[strconv.Itoa(uid)] = count
@@ -435,6 +435,7 @@ func (c *Client) doRequest(method, path string, body []byte, ifNoneMatch string)
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Device-Leases", "v1")
 	if ifNoneMatch != "" {
 		req.Header.Set("If-None-Match", ifNoneMatch)
 	}

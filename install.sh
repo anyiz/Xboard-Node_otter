@@ -27,7 +27,7 @@ DEFAULT_ACTION="install"
 DEFAULT_RELEASE_VERSION="latest"
 DEFAULT_LOG_LEVEL="info"
 DEFAULT_KERNEL_LOG_LEVEL="warn"
-DEFAULT_DOWNLOAD_BASE="https://github.com/cedar2025/xboard-node/releases"
+DEFAULT_DOWNLOAD_BASE="https://github.com/anyiz/Xboard-Node_otter/releases"
 
 ACTION="${DEFAULT_ACTION}"
 MODE=""
@@ -469,14 +469,6 @@ select_binary_source() {
         echo "$BINARY_SOURCE"
         return
     fi
-    if [ -f "./xboard-node" ]; then
-        echo "./xboard-node"
-        return
-    fi
-    if [ -f "./xboard-node-linux-${ARCH}" ]; then
-        echo "./xboard-node-linux-${ARCH}"
-        return
-    fi
     echo ""
 }
 
@@ -520,10 +512,6 @@ stage_xbctl() {
             exit 1
         fi
         local_src="$CLI_BINARY_SOURCE"
-    elif [ -f "./xbctl" ]; then
-        local_src="./xbctl"
-    elif [ -f "./xbctl-linux-${ARCH}" ]; then
-        local_src="./xbctl-linux-${ARCH}"
     fi
     if [ -n "$local_src" ]; then
         log_step "Using local xbctl binary: ${local_src}"
@@ -592,7 +580,7 @@ render_service() {
     cat >"$TMP_DIR/${SERVICE_NAME}" <<EOF_UNIT
 [Unit]
 Description=Xboard Node Backend
-Documentation=https://github.com/cedar2025/xboard-node
+Documentation=https://github.com/anyiz/Xboard-Node_otter
 After=network-online.target
 Wants=network-online.target
 

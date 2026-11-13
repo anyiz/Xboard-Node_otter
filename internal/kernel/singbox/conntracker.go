@@ -15,6 +15,7 @@ import (
 	N "github.com/sagernet/sing/common/network"
 	"golang.org/x/time/rate"
 
+	"github.com/cedar2025/xboard-node/internal/devicelease"
 	"github.com/cedar2025/xboard-node/internal/nlog"
 )
 
@@ -122,6 +123,7 @@ func (u *userStats) aliveIPList() map[string]bool {
 //   - Close callback to decrement IP refcounts
 //   - Per-connection rate limit token accumulation (amortized WaitN)
 type ConnTracker struct {
+	leases  *devicelease.Manager
 	usersMu sync.RWMutex
 	users   map[int]*userStats  // userID → stats
 	uuidMap map[string]int      // UUID → userID (for lookup in RoutedConnection)
@@ -218,7 +220,7 @@ func (t *ConnTracker) RoutedConnection(
 	t.usersMu.RUnlock()
 
 	// Device limit gate-keeping
-	if dlf := t.deviceLimitFunc.Load(); dlf != nil {
+	if dlf := t.deviceLimitFunc.Load(); dlf != nil && t.leases == nil {
 		if limit, hasLimit := (*dlf)(uuid); hasLimit {
 			if t.checkDeviceGate(us, uid, sourceIP, limit) {
 				nlog.Core().Info("singbox: device limit gate-keep, rejecting connection",
@@ -267,6 +269,10 @@ func (t *ConnTracker) RoutedPacketConnection(
 	metadata adapter.InboundContext,
 	_ adapter.Rule, _ adapter.Outbound,
 ) N.PacketConn {
+	if t.leases != nil {
+		conn.Close()
+		return conn
+	}
 	uuid := metadata.User
 	sourceIP := metadata.Source.Addr.String()
 
@@ -276,7 +282,7 @@ func (t *ConnTracker) RoutedPacketConnection(
 	t.usersMu.RUnlock()
 
 	// Device limit gate-keeping
-	if dlf := t.deviceLimitFunc.Load(); dlf != nil {
+	if dlf := t.deviceLimitFunc.Load(); dlf != nil && t.leases == nil {
 		if limit, hasLimit := (*dlf)(uuid); hasLimit {
 			if t.checkDeviceGate(us, uid, sourceIP, limit) {
 				nlog.Core().Info("singbox: device limit gate-keep, rejecting UDP connection",

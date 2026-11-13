@@ -90,6 +90,9 @@ func (s *SingBox) Protocols() []string {
 }
 
 func (s *SingBox) Start(nodeConfig *model.NodeSpec, users []model.UserSpec, tls kernel.TLSCert) error {
+	if err := kernel.ValidateStrict(s.cfg, nodeConfig); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -125,22 +128,9 @@ func (s *SingBox) Start(nodeConfig *model.NodeSpec, users []model.UserSpec, tls 
 		return fmt.Errorf("create sing-box instance: %w", err)
 	}
 
-	if err := instance.Start(); err != nil {
-		instance.Close()
-		cancel()
-		return fmt.Errorf("start sing-box: %w", err)
-	}
-
-	// New instance started successfully — swap state.
-	s.box = instance
-	s.ctx = ctx
-	s.cancel = cancel
-	s.users = users
-	s.nodeConfig = nodeConfig
-	s.tls = tls
-
 	// Fresh tracker on full restart.
 	s.connTracker = NewConnTracker(0)
+	s.connTracker.leases = s.cfg.LeaseManager
 	s.connTracker.SetUserMap(buildUserMap(users))
 	if s.speedLimitFunc != nil {
 		s.connTracker.SetSpeedLimitFunc(s.speedLimitFunc)
@@ -151,6 +141,28 @@ func (s *SingBox) Start(nodeConfig *model.NodeSpec, users []model.UserSpec, tls 
 
 	s.trackerRegistered = false
 	s.registerTracker(ctx)
+	if s.cfg.StrictDeviceLeases && !s.trackerRegistered {
+		instance.Close()
+		cancel()
+		s.connTracker = oldTracker
+		return fmt.Errorf("strict admission tracker unavailable")
+	}
+
+	if err := instance.Start(); err != nil {
+		instance.Close()
+		cancel()
+		s.connTracker = oldTracker
+		s.trackerRegistered = oldTracker != nil
+		return fmt.Errorf("start sing-box: %w", err)
+	}
+
+	// New instance started successfully — swap state.
+	s.box = instance
+	s.ctx = ctx
+	s.cancel = cancel
+	s.users = users
+	s.nodeConfig = nodeConfig
+	s.tls = tls
 
 	// Recycle old instance in background — drain then close.
 	if oldBox != nil {
@@ -193,6 +205,9 @@ func recycleOldBox(oldBox *box.Box, oldCancel context.CancelFunc, oldCtx context
 // Routes, outbounds, and the connTracker stay alive so in-flight connections
 // continue to be tracked correctly.
 func (s *SingBox) Reload(nodeConfig *model.NodeSpec, users []model.UserSpec, tls kernel.TLSCert) error {
+	if err := kernel.ValidateStrict(s.cfg, nodeConfig); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

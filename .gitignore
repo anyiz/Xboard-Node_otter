@@ -23,7 +23,7 @@ Thumbs.db
 vendor/
 config.json
 benchmark/
-third_party
+# Patched, pinned kernel sources are part of this fork.
 bench-results
 internal/kernel/singbox/config_bench_test.go
 internal/kernel/xray/config_bench_test.go

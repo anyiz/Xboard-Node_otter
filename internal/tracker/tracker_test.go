@@ -164,10 +164,25 @@ func TestFlushAliveIPs(t *testing.T) {
 		t.Errorf("user 2 IPs: got %d, want 1", len(flushed[2]))
 	}
 
-	// Without another Process call, hash is same → returns nil (skip duplicate)
+	// HTTP and WS must both renew unchanged state.
 	flushed2 := tr.FlushAliveIPs()
-	if flushed2 != nil {
-		t.Errorf("expected nil on duplicate flush, got %v", flushed2)
+	if len(flushed2[1]) != 2 || len(flushed2[2]) != 1 {
+		t.Fatalf("unchanged heartbeat lost: %v", flushed2)
+	}
+	flushed2[1][0] = "changed"
+	delete(flushed2, 2)
+	if len(flushed[2]) != 1 || flushed[1][0] == "changed" {
+		t.Fatal("reports share mutable storage")
+	}
+	tr.Process(nil, nil, 0)
+	if empty := tr.FlushAliveIPs(); empty == nil || len(empty) != 0 {
+		t.Fatal("offline transition must send a non-nil empty snapshot")
+	}
+	if len(flushed[1]) != 2 || len(flushed[2]) != 1 {
+		t.Fatal("later snapshot changed in-flight report")
+	}
+	if empty := tr.FlushAliveIPs(); empty == nil || len(empty) != 0 {
+		t.Fatal("empty heartbeat must keep clearing panel state")
 	}
 }
 

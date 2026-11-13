@@ -55,6 +55,13 @@ func buildConfig(kcfg config.KernelConfig, nc *model.NodeSpec, users []model.Use
 
 	inbound := buildInbound(nc, users, tc)
 	if inbound != nil {
+		if kcfg.StrictDeviceLeases {
+			inbound["proxy_protocol"] = true
+			inbound["proxy_protocol_trusted_sources"] = strings.Join(kcfg.TrustedProxies, ",")
+			if nc.Protocol == "shadowsocks" {
+				inbound["network"] = "tcp"
+			}
+		}
 		cfg["inbounds"] = []M{inbound}
 	}
 

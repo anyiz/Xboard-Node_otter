@@ -18,6 +18,7 @@ import (
 	"github.com/cedar2025/xboard-node/internal/cert/dnsproviders"
 	"github.com/cedar2025/xboard-node/internal/config"
 	"github.com/cedar2025/xboard-node/internal/controlplane"
+	"github.com/cedar2025/xboard-node/internal/devicelease"
 	"github.com/cedar2025/xboard-node/internal/kernel"
 	"github.com/cedar2025/xboard-node/internal/kernel/singbox"
 	"github.com/cedar2025/xboard-node/internal/kernel/xray"
@@ -138,6 +139,9 @@ func NewWithControlPlane(cfg *config.Config, cp controlplane.ControlPlane) *Serv
 
 func newService(cfg *config.Config, cp controlplane.ControlPlane) *Service {
 	certMgr := cert.NewManager(cfg.Cert)
+	if cfg.Kernel.StrictDeviceLeases {
+		cfg.Kernel.LeaseManager = devicelease.New(&devicelease.Client{URL: cfg.Panel.URL, Token: cfg.Panel.Token, NodeID: cfg.Panel.NodeID, MachineID: cfg.Panel.MachineID})
+	}
 
 	var k kernel.Kernel
 	switch cfg.Kernel.Type {
@@ -169,6 +173,12 @@ func newService(cfg *config.Config, cp controlplane.ControlPlane) *Service {
 }
 
 func (s *Service) Run(ctx context.Context) error {
+	if s.cfg.Kernel.LeaseManager != nil {
+		leaseCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		defer s.cfg.Kernel.LeaseManager.Close()
+		go s.cfg.Kernel.LeaseManager.Run(leaseCtx)
+	}
 	// Start cert manager (handles auto-TLS or manual cert verification)
 	if err := s.cert.Start(ctx); err != nil {
 		return fmt.Errorf("cert manager: %w", err)
@@ -989,9 +999,6 @@ func (s *Service) pushReportAsync() {
 			if len(traffic) > 0 {
 				s.tracker.RestoreTraffic(traffic)
 			}
-			if len(aliveIPs) > 0 {
-				s.tracker.RestoreAliveIPs(aliveIPs)
-			}
 			s.pushBackoff.onFailure()
 			return
 		}
@@ -1081,6 +1088,9 @@ func (s *Service) buildMetrics(status monitor.Status) map[string]interface{} {
 	}
 
 	// Limiter metrics.
+	if s.cfg.Kernel.LeaseManager != nil {
+		m["device_leases"] = s.cfg.Kernel.LeaseManager.Metrics()
+	}
 	lm := s.limiter.SnapshotMetrics()
 	m["limits"] = map[string]interface{}{
 		"device_limit_events": lm.DeviceLimitEvents,
@@ -1135,11 +1145,7 @@ func (s *Service) sendDeviceBatch() {
 	}
 
 	devices := s.tracker.FlushAliveIPs()
-	// FlushAliveIPs returns nil if no changes since last flush
-	if devices == nil {
-		nlog.Core().Debug("device snapshot unchanged, skipping")
-		return
-	}
+	// Unchanged and empty snapshots renew or clear panel state.
 	s.sink.ReportDevices(s.wsClient, devices)
 	nlog.Core().Debug("device snapshot sent", "users", len(devices))
 }

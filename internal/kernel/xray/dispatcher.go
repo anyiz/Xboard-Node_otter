@@ -3,6 +3,7 @@ package xray
 import (
 	"context"
 	"errors"
+	"github.com/cedar2025/xboard-node/internal/devicelease"
 	"reflect"
 	"sort"
 	"sync"
@@ -66,8 +67,10 @@ func limitDispatcherFactory(ctx context.Context, config interface{}) (interface{
 // intact, so the dispatcher is limited to gate-keeping and safe connection
 // lifecycle bookkeeping.
 type LimitDispatcher struct {
-	inner     interface{}        // original DefaultDispatcher (Feature + Dispatcher)
-	innerDisp routing.Dispatcher // same object, typed as Dispatcher
+	leases      *devicelease.Manager
+	credentials map[string]string
+	inner       interface{}        // original DefaultDispatcher (Feature + Dispatcher)
+	innerDisp   routing.Dispatcher // same object, typed as Dispatcher
 
 	// limitedUsers: users with device limit > 0, protected by mu.
 	// Needs deterministic IP ordering for kick decisions.
@@ -103,13 +106,23 @@ func (ic *ipCounter) aliveIPs() map[string]bool {
 // ─── routing.Dispatcher ──────────────────────────────────────────────────────
 
 func (d *LimitDispatcher) Dispatch(ctx context.Context, dest net.Destination) (*transport.Link, error) {
+	lease, leaseErr := d.authorizeStrict(ctx, dest)
+	if leaseErr != nil {
+		return nil, leaseErr
+	}
 	email, sourceIP, isTCP, err := d.identifyAndCheck(ctx, dest)
 	if err != nil {
+		if lease != nil {
+			lease.Close()
+		}
 		return nil, err
 	}
 
 	link, err := d.innerDisp.Dispatch(ctx, dest)
 	if err != nil {
+		if lease != nil {
+			lease.Close()
+		}
 		if email != "" && isTCP {
 			d.delConn(email, sourceIP)
 		}
@@ -119,19 +132,32 @@ func (d *LimitDispatcher) Dispatch(ctx context.Context, dest net.Destination) (*
 	if email != "" {
 		d.trackLink(link, email, sourceIP, isTCP)
 	}
+	guardLink(link, lease)
 	return link, nil
 }
 
 func (d *LimitDispatcher) DispatchLink(ctx context.Context, dest net.Destination, link *transport.Link) error {
+	lease, leaseErr := d.authorizeStrict(ctx, dest)
+	if leaseErr != nil {
+		return leaseErr
+	}
 	email, sourceIP, isTCP, err := d.identifyAndCheck(ctx, dest)
 	if err != nil {
+		if lease != nil {
+			lease.Close()
+		}
 		return err
 	}
 
 	if email != "" {
 		d.trackLink(link, email, sourceIP, isTCP)
 	}
-	return d.innerDisp.DispatchLink(ctx, dest, link)
+	guardLink(link, lease)
+	err = d.innerDisp.DispatchLink(ctx, dest, link)
+	if err != nil && lease != nil {
+		lease.Close()
+	}
+	return err
 }
 
 // identifyAndCheck extracts user identity from the session context, enforces

@@ -87,6 +87,7 @@ func NodeSpecFromPanel(nc *panel.NodeConfig) *NodeSpec {
 	}
 
 	return &NodeSpec{
+		StrictDeviceLeases:  nc.StrictDeviceLeases,
 		Protocol:            nc.Protocol,
 		ListenIP:            nc.ListenIP,
 		ServerPort:          nc.ServerPort,
@@ -226,6 +227,7 @@ func (n *NodeSpec) ToPanel() *panel.NodeConfig {
 	}
 
 	return &panel.NodeConfig{
+		StrictDeviceLeases:  n.StrictDeviceLeases,
 		Protocol:            n.Protocol,
 		ListenIP:            n.ListenIP,
 		ServerPort:          n.ServerPort,
