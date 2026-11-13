@@ -1,4 +1,4 @@
-# Xboard-Node Otter v1.13-otter.1
+# Xboard-Node Otter v1.13-otter.2
 
 This is the first release of the `anyiz/Xboard-Node_otter` fork. It includes strict, panel-authorized public-IP device leases shared across all landing nodes, plus TCP PROXY Protocol support for recovering client IPs through Flux relay nodes.
 
