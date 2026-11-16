@@ -1,9 +1,9 @@
-# Xboard-Node Otter v1.13-otter.3
+# Xboard-Node Otter v1.13-otter.4
 
-Adds panel-managed strict public-IP lease settings for machine-mode nodes. The panel can supply an enabled flag, trusted proxy CIDRs and policy revision per node. A policy change stops the old node service before starting its replacement; other nodes on the machine keep running. Missing policy preserves local configuration.
+Fixes proxy kernels remaining stopped after an empty user list receives valid users. Full and incremental user updates now prepare the new user/limiter state before starting a stopped kernel; startup failures restore the previous state.
 
-Nodes report `X-Device-Policy: v1` capability and the running policy revision. The matching Xboard panel waits for a fresh applied revision before issuing protected credentials. Managed nodes can start with no users to complete this acknowledgement safely. Invalid or unrestricted trust ranges are rejected. Failed node services are retried during discovery.
+Configuration updates keep an empty-user kernel running so panel-managed strict lease policies can report a healthy applied revision before protected users are released. Empty user lists do not authorize any credentials. Strict mode, trusted proxy checks, device limits and lease validation remain enforced.
 
-Use with the matching Xboard visual policy UI. Flux PROXY v2 and host firewall remain separately configured; this release does not modify either. Single-node mode continues using local configuration. Policy changes interrupt connections on that node. No existing credential allowlist is expanded automatically.
+Regression tests cover full and incremental recovery, failed-start rollback and empty-user configuration updates. This promotes the v1.13-otter.3-empty-user-fix patch already verified on live machine-mode nodes to an official release.
 
-Includes Linux amd64/arm64 binaries and installer. Upgrade only the isolated test services first, preserving machine identity and existing configuration.
+Includes Linux amd64/arm64 node and xbctl binaries, SHA256SUMS and install.sh. Install with --version v1.13-otter.4; preserve existing machine identity and configuration. Restarting the node briefly interrupts its connections.

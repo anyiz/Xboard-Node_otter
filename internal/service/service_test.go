@@ -34,8 +34,8 @@ type fakeKernel struct {
 	deviceLimitFunc func(string) (int, bool)
 }
 
-func (f *fakeKernel) Name() string { return "fake" }
-func (f *fakeKernel) Protocols() []string { return []string{"vless"} }
+func (f *fakeKernel) Name() string                      { return "fake" }
+func (f *fakeKernel) Protocols() []string               { return []string{"vless"} }
 func (f *fakeKernel) Capabilities() kernel.Capabilities { return kernel.Capabilities{} }
 func (f *fakeKernel) Start(nodeConfig *model.NodeSpec, users []model.UserSpec, tls kernel.TLSCert) error {
 	_, _, _ = nodeConfig, users, tls
@@ -46,7 +46,7 @@ func (f *fakeKernel) Start(nodeConfig *model.NodeSpec, users []model.UserSpec, t
 	f.running = true
 	return nil
 }
-func (f *fakeKernel) Stop() { f.running = false }
+func (f *fakeKernel) Stop()           { f.running = false }
 func (f *fakeKernel) IsRunning() bool { return f.running }
 func (f *fakeKernel) Reload(nodeConfig *model.NodeSpec, users []model.UserSpec, tls kernel.TLSCert) error {
 	_, _, _ = nodeConfig, users, tls
@@ -92,9 +92,9 @@ func (f *fakeKernel) CloseUserConnections(ctx context.Context, uuid string) erro
 	return nil
 }
 func (f *fakeKernel) SetSpeedLimitFunc(fn func(uuid string) *rate.Limiter) { f.speedLimitFunc = fn }
-func (f *fakeKernel) SetDeviceLimitFunc(fn func(uuid string) (int, bool)) { f.deviceLimitFunc = fn }
-func (f *fakeKernel) UpdateGlobalDevices(users map[int][]string) { _ = users }
-func (f *fakeKernel) ClearGlobalDevices() {}
+func (f *fakeKernel) SetDeviceLimitFunc(fn func(uuid string) (int, bool))  { f.deviceLimitFunc = fn }
+func (f *fakeKernel) UpdateGlobalDevices(users map[int][]string)           { _ = users }
+func (f *fakeKernel) ClearGlobalDevices()                                  {}
 
 func newTestService(k *fakeKernel) *Service {
 	sharedLimiter := limiter.New()
@@ -198,7 +198,6 @@ func TestApplyUserDeltaAddPreparesLimiterBeforeKernelUpdate(t *testing.T) {
 	}
 }
 
-
 func TestValidateNodeRuntimeRejectsUnsupportedDNSProvider(t *testing.T) {
 	cfg := &config.Config{Kernel: config.KernelConfig{Type: "singbox"}}
 	err := validateNodeRuntime(cfg, []string{"http"}, &model.NodeSpec{
@@ -294,5 +293,50 @@ func TestValidateNodeRuntimeRejectsRealityWithoutServerNameOrDest(t *testing.T) 
 	}
 	if got := err.Error(); got != "reality tls requires tls_settings.server_name or tls_settings.dest" {
 		t.Fatalf("unexpected error: %v", got)
+	}
+}
+
+func TestEmptyUserRecovery(t *testing.T) {
+	for _, delta := range []bool{false, true} {
+		for _, fail := range []bool{false, true} {
+			k := &fakeKernel{}
+			if fail {
+				k.startErr = errors.New("start failed")
+			}
+			s := newTestService(k)
+			s.lastConfig = &model.NodeSpec{Protocol: "vless"}
+			s.updateUserState(nil)
+			oldHash := s.lastUserHash
+			users := []model.UserSpec{{ID: 8, UUID: "new-user", SpeedLimit: 10, DeviceLimit: 1}}
+			if delta {
+				s.applyUserDelta(context.Background(), "add", users)
+			} else {
+				s.applyUserUpdate(context.Background(), users, computeUserHash(users))
+			}
+			if k.startCalls != 1 {
+				t.Fatalf("start calls=%d", k.startCalls)
+			}
+			if fail {
+				if k.running || len(s.lastUsers) != 0 || s.lastUserHash != oldHash || s.speedTracker.GetLimiter("new-user") != nil {
+					t.Fatal("failed startup did not roll back")
+				}
+			} else if !k.running || len(s.lastUsers) != 1 || s.lastUserHash != computeUserHash(users) || s.speedTracker.GetLimiter("new-user") == nil {
+				t.Fatal("new users did not restore kernel and limiter")
+			}
+		}
+	}
+}
+func TestEmptyUserConfigKeepsKernelAvailable(t *testing.T) {
+	for _, running := range []bool{false, true} {
+		k := &fakeKernel{running: running}
+		s := newTestService(k)
+		s.lastConfig = &model.NodeSpec{Protocol: "vless"}
+		s.applyChanges(context.Background(), true, false)
+		if !k.running {
+			t.Fatal("empty-user config must keep policy health available")
+		}
+		if len(s.lastUsers) != 0 {
+			t.Fatal("must not invent credentials")
+		}
 	}
 }

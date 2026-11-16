@@ -761,28 +761,21 @@ func (s *Service) startKernel(nc *model.NodeSpec, users []model.UserSpec) bool {
 	return true
 }
 
-// ensureRunning starts the kernel if it is not running and there are users +
-// config available. Returns true if the kernel is running afterwards.
-func (s *Service) ensureRunning() bool {
-	if s.kernel.IsRunning() {
-		return true
-	}
-	if len(s.lastUsers) > 0 && s.lastConfig != nil {
-		return s.startKernel(s.lastConfig, s.lastUsers)
-	}
-	return false
-}
-
 // ─── User update entry points ───────────────────────────────────────────────
 
 // applyUserUpdate replaces the full user set and hot-swaps the kernel.
 // Called from WS sync.users and REST polling.
 func (s *Service) applyUserUpdate(ctx context.Context, users []model.UserSpec, newHash string) {
-	if !s.ensureRunning() {
+	if s.lastConfig == nil {
 		return
 	}
-
 	prevUsers, prevHash := s.prepareUserState(users)
+	if !s.kernel.IsRunning() {
+		if !s.startKernel(s.lastConfig, users) {
+			s.restoreUserState(prevUsers, prevHash)
+		}
+		return
+	}
 	added, removed, err := s.kernel.UpdateUsers(users)
 	if err != nil {
 		nlog.Core().Warn(fmt.Sprintf("UpdateUsers failed, restarting kernel: %v", err))
@@ -810,7 +803,8 @@ func (s *Service) applyUserDelta(ctx context.Context, action string, deltaUsers 
 		}
 		merged := mergeUsers(s.lastUsers, deltaUsers)
 
-		if !s.ensureRunning() {
+		if !s.kernel.IsRunning() {
+			s.applyUserUpdate(ctx, merged, computeUserHash(merged))
 			return
 		}
 
@@ -920,13 +914,10 @@ func (s *Service) applyChanges(ctx context.Context, configChanged, usersChanged 
 		return
 	}
 
-	if s.lastConfig == nil || len(s.lastUsers) == 0 {
-		if len(s.lastUsers) == 0 {
-			s.kernel.Stop()
-			s.appliedState.Users = nil
-		}
+	if s.lastConfig == nil {
 		return
 	}
+	// Keep the empty-user listener alive for strict-policy health acknowledgement.
 
 	// If config changed, delegate to kernel.Reload. The kernel implementation
 	// decides whether to hot-swap users, reconstruct inbounds, or restart itself.
