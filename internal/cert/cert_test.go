@@ -234,3 +234,26 @@ func TestACMEFingerprintEnvOrderStable(t *testing.T) {
 		t.Fatal("fingerprint not order-independent")
 	}
 }
+
+func TestDNSResolverOverride(t *testing.T) {
+	for _, value := range []string{"", "8.8.4.4:53, 8.8.8.8:53"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("XBOARD_ACME_DNS_RESOLVERS", value)
+			m := &Manager{cfg: config.CertConfig{DNSProvider: "cloudflare", DNSEnv: map[string]string{"CLOUDFLARE_API_TOKEN": "test"}}}
+			solver, err := m.buildDNSSolver()
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := 0
+			if value != "" {
+				want = 2
+			}
+			if len(solver.Resolvers) != want {
+				t.Fatalf("resolvers=%v", solver.Resolvers)
+			}
+			if solver.PropagationTimeout == -1 {
+				t.Fatal("propagation verification must stay enabled")
+			}
+		})
+	}
+}

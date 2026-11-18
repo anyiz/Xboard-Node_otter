@@ -55,10 +55,17 @@ func buildConfig(kcfg config.KernelConfig, nc *model.NodeSpec, users []model.Use
 
 	inbound := buildInbound(nc, users, tc)
 	if inbound != nil {
-		if kcfg.StrictDeviceLeases {
+		mode := kcfg.DevicePolicyMode
+		if mode == "" && kcfg.StrictDeviceLeases {
+			mode = "strict"
+		}
+		if mode == "strict" || mode == "compatible" {
 			inbound["proxy_protocol"] = true
 			inbound["proxy_protocol_trusted_sources"] = strings.Join(kcfg.TrustedProxies, ",")
-			if nc.Protocol == "shadowsocks" {
+			if mode == "compatible" {
+				inbound["proxy_protocol_accept_no_header"] = true
+			}
+			if mode == "strict" && nc.Protocol == "shadowsocks" {
 				inbound["network"] = "tcp"
 			}
 		}

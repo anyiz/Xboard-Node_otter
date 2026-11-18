@@ -119,10 +119,20 @@ func (x *Xray) Start(nodeConfig *model.NodeSpec, users []model.UserSpec, tls ker
 	if err := kernel.ValidateStrict(x.cfg, nodeConfig); err != nil {
 		return err
 	}
-	if x.cfg.StrictDeviceLeases {
+	mode := x.cfg.DevicePolicyMode
+	if mode == "" && x.cfg.StrictDeviceLeases {
+		mode = "strict"
+	}
+	if mode == "strict" {
 		if err := internet.SetStrictProxy(nodeConfig.ServerPort, x.cfg.TrustedProxies); err != nil {
 			return err
 		}
+	} else if mode == "compatible" {
+		if err := internet.SetCompatibleProxy(nodeConfig.ServerPort, x.cfg.TrustedProxies); err != nil {
+			return err
+		}
+	} else {
+		internet.ClearProxyPolicy(nodeConfig.ServerPort)
 	}
 	// ── Phase 1: Build config (no shared state) ─────────────────────────
 	x.ensureGeoData(nodeConfig)

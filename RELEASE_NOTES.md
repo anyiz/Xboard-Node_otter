@@ -1,9 +1,9 @@
-# Xboard-Node Otter v1.13-otter.4
+# Xboard-Node Otter v1.13-otter.5
 
-Fixes proxy kernels remaining stopped after an empty user list receives valid users. Full and incremental user updates now prepare the new user/limiter state before starting a stopped kernel; startup failures restore the previous state.
+Adds the panel-managed `compatible` device policy mode. Trusted TCP relays must send a valid PROXY Protocol header so the node sees the real client IP, while untrusted peers remain usable as ordinary direct connections. The existing per-user device limiter and cross-node IP snapshots continue to apply without requiring strict Redis leases.
 
-Configuration updates keep an empty-user kernel running so panel-managed strict lease policies can report a healthy applied revision before protected users are released. Empty user lists do not authorize any credentials. Strict mode, trusted proxy checks, device limits and lease validation remain enforced.
+The policy wire capability is now `v2`. Panels can safely keep `v1` nodes on strict mode and only offer compatibility mode after a new node reports `v2`. Xray and sing-box both enforce trusted relay CIDRs; unrestricted `/0` trust is rejected. Strict mode behavior remains unchanged.
 
-Regression tests cover full and incremental recovery, failed-start rollback and empty-user configuration updates. This promotes the v1.13-otter.3-empty-user-fix patch already verified on live machine-mode nodes to an official release.
+Also includes the validated `XBOARD_ACME_DNS_RESOLVERS` override for DNS-01 propagation checks. This permits explicit resolvers without disabling TXT-record verification.
 
-Includes Linux amd64/arm64 node and xbctl binaries, SHA256SUMS and install.sh. Install with --version v1.13-otter.4; preserve existing machine identity and configuration. Restarting the node briefly interrupts its connections.
+Includes Linux amd64/arm64 node and xbctl binaries, SHA256SUMS and install.sh. Install with `--version v1.13-otter.5`; preserve existing machine identity and configuration. Restarting the node briefly interrupts its connections.

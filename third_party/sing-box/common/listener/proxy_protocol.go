@@ -10,7 +10,7 @@ import (
 )
 
 // Parse in each accepted connection's goroutine, never block the accept loop.
-func acceptProxy(conn net.Conn, trusted []string) (net.Conn, error) {
+func acceptProxy(conn net.Conn, trusted []string, acceptDirect bool) (net.Conn, error) {
 	peer, err := netip.ParseAddrPort(conn.RemoteAddr().String())
 	if err != nil {
 		return nil, err
@@ -26,6 +26,9 @@ func acceptProxy(conn net.Conn, trusted []string) (net.Conn, error) {
 		}
 	}
 	if !allowed {
+		if acceptDirect {
+			return conn, nil
+		}
 		return nil, fmt.Errorf("untrusted PROXY peer")
 	}
 	if err = conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {

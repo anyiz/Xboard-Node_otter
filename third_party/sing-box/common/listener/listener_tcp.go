@@ -22,7 +22,7 @@ import (
 
 func (l *Listener) ListenTCP() (net.Listener, error) {
 	//nolint:staticcheck
-	if l.listenOptions.ProxyProtocolAcceptNoHeader || (l.listenOptions.ProxyProtocol && len(l.listenOptions.ProxyProtocolTrustedSources) == 0) {
+	if l.listenOptions.ProxyProtocol && len(l.listenOptions.ProxyProtocolTrustedSources) == 0 {
 		return nil, E.New("Proxy Protocol is deprecated and removed in sing-box 1.6.0")
 	}
 	var err error
@@ -102,7 +102,7 @@ func (l *Listener) loopTCPIn() {
 
 func (l *Listener) handleTCP(conn net.Conn) {
 	if l.listenOptions.ProxyProtocol {
-		wrapped, err := acceptProxy(conn, strings.Split(l.listenOptions.ProxyProtocolTrustedSources, ","))
+		wrapped, err := acceptProxy(conn, strings.Split(l.listenOptions.ProxyProtocolTrustedSources, ","), l.listenOptions.ProxyProtocolAcceptNoHeader)
 		if err != nil {
 			conn.Close()
 			return

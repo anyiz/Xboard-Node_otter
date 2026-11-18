@@ -10,9 +10,27 @@ import (
 	"time"
 )
 
-var strictProxyPorts sync.Map // port -> immutable trusted CIDRs; configured before instance start
+type proxyPolicy struct {
+	mode     string
+	prefixes []netip.Prefix
+}
+
+var strictProxyPorts sync.Map // port -> proxyPolicy; configured before instance start
 
 func SetStrictProxy(port int, cidrs []string) error {
+	return setProxyPolicy(port, "strict", cidrs)
+}
+
+// SetCompatibleProxy trusts PROXY headers from configured relays while still
+// accepting ordinary direct clients. A trusted relay must always send a valid
+// header, otherwise its own address could be mistaken for the client address.
+func SetCompatibleProxy(port int, cidrs []string) error {
+	return setProxyPolicy(port, "compatible", cidrs)
+}
+
+func ClearProxyPolicy(port int) { strictProxyPorts.Delete(port) }
+
+func setProxyPolicy(port int, mode string, cidrs []string) error {
 	prefixes := make([]netip.Prefix, 0, len(cidrs))
 	for _, s := range cidrs {
 		p, e := netip.ParsePrefix(s)
@@ -24,10 +42,11 @@ func SetStrictProxy(port int, cidrs []string) error {
 	if len(prefixes) == 0 {
 		return fmt.Errorf("strict PROXY requires trusted sources")
 	}
-	// Multiple logical nodes must not silently replace each other's trust policy.
-	if old, loaded := strictProxyPorts.LoadOrStore(port, prefixes); loaded && !reflect.DeepEqual(old, prefixes) {
-		return fmt.Errorf("conflicting strict PROXY trust policy on port %d; restart with distinct ports", port)
+	policy := proxyPolicy{mode: mode, prefixes: prefixes}
+	if old, loaded := strictProxyPorts.Load(port); loaded && reflect.DeepEqual(old, policy) {
+		return nil
 	}
+	strictProxyPorts.Store(port, policy)
 	return nil
 }
 
@@ -40,17 +59,20 @@ func wrapStrictProxy(l net.Listener) (net.Listener, bool) {
 	if !ok {
 		return l, false
 	}
-	prefixes := v.([]netip.Prefix)
+	policy := v.(proxyPolicy)
 	return &pp.Listener{Listener: l, ReadHeaderTimeout: 5 * time.Second,
 		Policy: func(peer net.Addr) (pp.Policy, error) {
 			a, e := netip.ParseAddrPort(peer.String())
 			if e != nil {
 				return pp.REJECT, e
 			}
-			for _, p := range prefixes {
+			for _, p := range policy.prefixes {
 				if p.Contains(a.Addr().Unmap()) {
 					return pp.REQUIRE, nil
 				}
+			}
+			if policy.mode == "compatible" {
+				return pp.SKIP, nil
 			}
 			return pp.REJECT, pp.ErrInvalidUpstream
 		},

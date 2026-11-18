@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -120,6 +121,7 @@ type WSConfig struct {
 
 type KernelConfig struct {
 	DevicePolicyRevision string               `yaml:"-"`
+	DevicePolicyMode     string               `yaml:"device_policy_mode"` // off, compatible, strict
 	StrictDeviceLeases   bool                 `yaml:"strict_device_leases"`
 	TrustedProxies       []string             `yaml:"trusted_proxies"`
 	LeaseManager         *devicelease.Manager `yaml:"-"`
@@ -518,6 +520,15 @@ func (c *Config) inheritFrom(parent *Config) {
 	if len(c.Kernel.CustomRoute) == 0 {
 		c.Kernel.CustomRoute = parent.Kernel.CustomRoute
 	}
+	if c.Kernel.DevicePolicyMode == "" {
+		c.Kernel.DevicePolicyMode = parent.Kernel.DevicePolicyMode
+	}
+	if !c.Kernel.StrictDeviceLeases && parent.Kernel.StrictDeviceLeases {
+		c.Kernel.StrictDeviceLeases = true
+	}
+	if len(c.Kernel.TrustedProxies) == 0 {
+		c.Kernel.TrustedProxies = append([]string(nil), parent.Kernel.TrustedProxies...)
+	}
 	// Cert (NOT cert_dir — derived from config_dir later)
 	if c.Cert.CertMode == "" {
 		c.Cert.CertMode = parent.Cert.CertMode
@@ -693,6 +704,30 @@ func normalizeBaseURL(raw string) (string, string, error) {
 }
 
 func (c *Config) validate() error {
+	mode := strings.ToLower(strings.TrimSpace(c.Kernel.DevicePolicyMode))
+	switch mode {
+	case "":
+		// Preserve the legacy strict_device_leases switch when no mode is set.
+	case "off", "compatible":
+		c.Kernel.DevicePolicyMode = mode
+		c.Kernel.StrictDeviceLeases = false
+	case "strict":
+		c.Kernel.DevicePolicyMode = mode
+		c.Kernel.StrictDeviceLeases = true
+	default:
+		return fmt.Errorf("kernel.device_policy_mode must be 'off', 'compatible', or 'strict', got '%s'", c.Kernel.DevicePolicyMode)
+	}
+	if mode == "compatible" || mode == "strict" {
+		if len(c.Kernel.TrustedProxies) == 0 {
+			return fmt.Errorf("kernel.device_policy_mode %s requires trusted_proxies", mode)
+		}
+		for _, source := range c.Kernel.TrustedProxies {
+			prefix, err := netip.ParsePrefix(source)
+			if err != nil || prefix.Bits() == 0 {
+				return fmt.Errorf("invalid or unrestricted kernel.trusted_proxies entry: %s", source)
+			}
+		}
+	}
 	if c.IsStandalone() {
 		if err := c.validateStandalone(); err != nil {
 			return err

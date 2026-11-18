@@ -502,7 +502,11 @@ func (m *Manager) buildDNSSolver() (*certmagic.DNS01Solver, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &certmagic.DNS01Solver{DNSManager: certmagic.DNSManager{DNSProvider: provider}}, nil
+	// Explicit resolvers avoid intercepted authoritative DNS paths without skipping TXT validation.
+	resolvers := strings.FieldsFunc(os.Getenv("XBOARD_ACME_DNS_RESOLVERS"), func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\n' || r == '\t'
+	})
+	return &certmagic.DNS01Solver{DNSManager: certmagic.DNSManager{DNSProvider: provider, Resolvers: resolvers}}, nil
 }
 
 func (m *Manager) newDNSProvider() (certmagic.DNSProvider, error) {

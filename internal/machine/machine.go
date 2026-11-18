@@ -446,7 +446,18 @@ func applyDevicePolicy(cfg *config.KernelConfig, policy *panel.DevicePolicy) err
 	if strings.TrimSpace(policy.Revision) == "" {
 		return fmt.Errorf("missing policy revision")
 	}
-	if policy.Enabled && len(policy.TrustedProxies) == 0 {
+	mode := strings.ToLower(strings.TrimSpace(policy.Mode))
+	if mode == "" {
+		if policy.Enabled {
+			mode = "strict"
+		} else {
+			mode = "off"
+		}
+	}
+	if mode != "off" && mode != "compatible" && mode != "strict" {
+		return fmt.Errorf("invalid device policy mode: %s", mode)
+	}
+	if mode != "off" && len(policy.TrustedProxies) == 0 {
 		return fmt.Errorf("trusted proxies required")
 	}
 	for _, source := range policy.TrustedProxies {
@@ -455,7 +466,8 @@ func applyDevicePolicy(cfg *config.KernelConfig, policy *panel.DevicePolicy) err
 			return fmt.Errorf("invalid or unrestricted trusted proxy: %s", source)
 		}
 	}
-	cfg.StrictDeviceLeases = policy.Enabled
+	cfg.DevicePolicyMode = mode
+	cfg.StrictDeviceLeases = mode == "strict"
 	cfg.TrustedProxies = append([]string(nil), policy.TrustedProxies...)
 	cfg.DevicePolicyRevision = policy.Revision
 	return nil

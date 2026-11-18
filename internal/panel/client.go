@@ -436,7 +436,9 @@ func (c *Client) doRequest(method, path string, body []byte, ifNoneMatch string)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-Device-Leases", "v1")
-	req.Header.Set("X-Device-Policy", "v1")
+	// v2 adds the compatible policy mode. Keep the header version explicit so
+	// the panel never sends that mode to a node that only understands strict.
+	req.Header.Set("X-Device-Policy", "v2")
 	if ifNoneMatch != "" {
 		req.Header.Set("If-None-Match", ifNoneMatch)
 	}
